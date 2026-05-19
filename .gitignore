@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Chrome extension
+*.pem
+*.crx
+
+# Playwright
+.playwright-mcp/
+
+# Backups
+*.bak
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Screenshots (auto-generated)
+dashboard-screenshot.png
+dashboard-v2-*.png
+
+# Secrets — DO NOT COMMIT
+.env
+*.secret
