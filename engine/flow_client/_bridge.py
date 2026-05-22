@@ -412,8 +412,30 @@ class _FlowBridgeHandler(_BridgeHandler.BaseClass):
             else:
                 concurrency_req = min(len(clients), 10)
 
+            # Referencia de personaje (opcional)
+            import base64 as _b64
+            ref_images_b64 = body.get('reference_images', None)
+            if ref_images_b64 is not None:
+                _log(f'POST /api/generate: reference_images recibidas ({len(ref_images_b64)} imagenes)')
+                if not isinstance(ref_images_b64, list):
+                    self._json_response(400, {'ok': False, 'error': 'reference_images must be a list of base64 strings'})
+                    return
+                for _i, _r in enumerate(ref_images_b64):
+                    if not isinstance(_r, str) or not _r:
+                        self._json_response(400, {'ok': False, 'error': f'reference_images[{_i}] must be a non-empty string'})
+                        return
+                    try:
+                        _b64.b64decode(_r, validate=True)
+                    except Exception:
+                        self._json_response(400, {'ok': False, 'error': f'reference_images[{_i}] no es base64 valido'})
+                        return
+                _log(f'POST /api/generate: reference_images validadas OK ({len(ref_images_b64)} imagenes)')
+            else:
+                _log('POST /api/generate: sin reference_images')
+
             def _run_batch():
                 try:
+                    _log(f'Batch {batch_id}: iniciando con {len(prompts)} prompts, ref_images={ref_images_b64 is not None}')
                     results = _generation.batch_generate(
                         prompts=prompts,
                         output_folder=output_folder,
@@ -421,6 +443,7 @@ class _FlowBridgeHandler(_BridgeHandler.BaseClass):
                         concurrency=concurrency_req,
                         clients=clients,
                         filename_prefix='escena_{n}',
+                        reference_image_bytes=ref_images_b64 if ref_images_b64 else None,
                         on_progress=lambda done, total: _update_batch_progress(batch_id, done, total),
                         on_status=lambda idx, status: _update_batch_status(batch_id, idx, status),
                         on_result=lambda r: _update_batch_result(batch_id, r)
@@ -484,6 +507,23 @@ class _FlowBridgeHandler(_BridgeHandler.BaseClass):
         if self.path == '/api/projects':
             projects = _projects._list_projects()
             self._json_response(200, {'projects': projects})
+            return
+        if self.path.startswith('/api/projects/') and self.path.endswith('/references'):
+            import urllib.parse
+            proj_name = self.path.split('/api/projects/')[1].rsplit('/references', 1)[0].strip()
+            proj_name = urllib.parse.unquote(proj_name)
+            if not proj_name:
+                self._json_response(400, {'error': 'project name required'})
+                return
+            try:
+                refs = _projects._get_project_references(proj_name)
+                self._json_response(200, {'ok': True, 'images': refs})
+            except Exception as e:
+                proj = _projects._get_project(proj_name)
+                if not proj:
+                    self._json_response(404, {'error': 'project not found'})
+                else:
+                    self._json_response(500, {'error': str(e)})
             return
         if self.path.startswith('/api/projects/'):
             proj_name = self.path.split('/api/projects/')[1].strip()

@@ -197,7 +197,7 @@ def batch_generate(prompts, output_folder, filename_prefix='flow_{n}', aspect_ra
     os.makedirs(output_folder, exist_ok=True)
     total = len(prompts)
     effective_concurrency = max(1, min(concurrency, 10))
-    _log(f'batch_generate: {total} prompts, concurrency={effective_concurrency}, clients={(len(clients) if clients else 0)}')
+    _log(f'batch_generate: {total} prompts, concurrency={effective_concurrency}, clients={(len(clients) if clients else 0)}, ref_bytes={(len(reference_image_bytes) if reference_image_bytes else 0)} images')
     from ._bridge import _start_bridge_server, clear_pending_state, get_connected_accounts
     with _throttle_lock:
         _throttle_until = 0
@@ -252,8 +252,10 @@ def batch_generate(prompts, output_folder, filename_prefix='flow_{n}', aspect_ra
             if not cli.project_id:
                 cli.create_project()
             if reference_image_bytes and (not cli.reference_ids):
+                _log(f'Uploading {len(reference_image_bytes)} reference(s) to client {cli.label}...')
                 for ref_b64 in reference_image_bytes:
                     cli.upload_reference(ref_b64)
+                _log(f'Client {cli.label}: {len(cli.reference_ids)} reference(s) uploaded')
             try:
                 cli.prefetch_recaptcha_tokens(count=1, timeout=15)
                 if on_status:

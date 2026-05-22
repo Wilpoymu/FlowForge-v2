@@ -65,6 +65,17 @@ def _scan_project_folder(proj_dir, name):
             proj['stats']['images_generated'] = len(pngs)
             break
 
+    # Scan personaje/ subdirectory for reference images
+    ref_dir = os.path.join(proj_dir, 'personaje')
+    if os.path.isdir(ref_dir):
+        valid_exts = {'.png', '.jpg', '.jpeg', '.webp'}
+        ref_files = []
+        for fname in sorted(os.listdir(ref_dir)):
+            ext = os.path.splitext(fname)[1].lower()
+            if ext in valid_exts:
+                ref_files.append(os.path.join('personaje', fname))
+        proj['files']['personaje'] = ref_files
+
     # Auto-detect stage
     has_prompts = bool(proj['files']['prompts'])
     has_images = proj['stats']['images_generated'] > 0
@@ -184,6 +195,36 @@ def _get_project(name):
     if not os.path.isdir(proj_dir):
         return None
     return _scan_project_folder(proj_dir, name)
+
+def _get_project_references(project_name):
+    """Retorna array de {name: str, data_b64: str} con las imagenes en personaje/ del proyecto."""
+    import base64
+    if not _c._projects_base_dir:
+        return []
+    proj = _get_project(project_name)
+    if not proj:
+        return []
+    ref_files = proj.get('files', {}).get('personaje', [])
+    if not ref_files:
+        return []
+    proj_dir = os.path.join(_c._projects_base_dir, project_name)
+    valid_exts = {'.png', '.jpg', '.jpeg', '.webp'}
+    refs = []
+    for rel_path in ref_files:
+        fpath = os.path.join(proj_dir, rel_path)
+        ext = os.path.splitext(fpath)[1].lower()
+        if ext not in valid_exts:
+            continue
+        if not os.path.isfile(fpath):
+            continue
+        try:
+            with open(fpath, 'rb') as f:
+                raw = f.read()
+            data_b64 = base64.b64encode(raw).decode('ascii')
+            refs.append({'name': os.path.basename(rel_path), 'data_b64': data_b64})
+        except Exception:
+            pass
+    return refs
 
 def _update_project(name, updates):
     """Merge updates and save project.json."""

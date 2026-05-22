@@ -279,6 +279,87 @@
     font-size: 0.75rem;
     color: var(--text-muted);
   }
+
+  /* ── Reference Uploader ────────────────── */
+  .ref-section {
+    margin-top: 12px;
+    margin-bottom: 4px;
+    padding: 10px 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .ref-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .ref-label {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+  .ref-count {
+    font-size: 0.7rem;
+    font-weight: 600;
+    background: var(--accent);
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 100px;
+  }
+  .ref-upload-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .ref-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-style: italic;
+  }
+  .ref-previews {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 4px 0;
+  }
+  .ref-previews::-webkit-scrollbar { height: 3px; }
+  .ref-previews::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .ref-thumb {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    transition: var(--transition);
+  }
+  .ref-thumb:hover { border-color: var(--border-hover); }
+  .ref-thumb-wrap {
+    position: relative;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  .ref-thumb-remove {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 18px;
+    height: 18px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: var(--transition);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  }
+  .ref-thumb-remove:hover { background: var(--accent-hover); transform: scale(1.15); }
+
   .input-area textarea {
     width: 100%;
     min-height: 140px;
@@ -777,6 +858,25 @@ Un drag&oacute;n volando sobre un lago"></textarea>
       </button>
       <span class="json-file-name" id="jsonFileName"></span>
     </div>
+
+    <!-- Reference Images -->
+    <div class="ref-section" id="refSection">
+      <div class="ref-header">
+        <span class="ref-label">&#127917; Imagen de referencia (personaje)</span>
+        <span class="ref-count" id="refCount" style="display:none"></span>
+      </div>
+      <div class="ref-upload-row">
+        <input type="file" id="refFileInput" accept=".png,.jpg,.jpeg,.webp" multiple 
+               style="display:none" onchange="onReferenceFilesChange(event)">
+        <button class="btn-load-json" id="refUploadBtn" 
+                onclick="document.getElementById('refFileInput').click()">
+          &#128193; Seleccionar imagen
+        </button>
+        <span class="ref-hint" id="refHint">Sin referencia &mdash; se generar&aacute; con texto solamente</span>
+      </div>
+      <div class="ref-previews" id="refPreviews" style="display:none"></div>
+    </div>
+
     <div class="controls-row folder-row">
       <div class="control-group" style="flex:1">
         <label>Carpeta de salida</label>

@@ -14,7 +14,10 @@
     progress: { done: 0, total: 0 },
     eventSource: null,
     lastOutputFolder: '',
-    lastModel: 'NARWHAL'
+    lastModel: 'NARWHAL',
+    references: [],        // {name: str, data_b64: str} — imagenes de referencia
+    projectRefsCache: {},  // projectName -> references[] — cache por proyecto
+    lastReferenceImages: null  // preservado para retry
   };
 
   // ── DOM refs ─────────────────────────────────────────
@@ -131,6 +134,14 @@
       return;
     }
 
+    // Capturar referencias antes de limpiar estado
+    var refImages = state.references.length > 0 ? state.references.map(function (r) { return r.data_b64; }) : undefined;
+    state.lastReferenceImages = refImages;  // preservar para retry
+
+    // Limpiar referencias del batch anterior al arrancar uno nuevo
+    state.references = [];
+    renderReferencePreviews();
+
     // Disable UI
     state.running = true;
     state.results = [];
@@ -159,7 +170,8 @@
         model: modelSelect.value,
         concurrency: parseInt($('concurrencySlider').value) || 2,
         project: currentProject || '',
-        accounts: getSelectedAccounts()
+        accounts: getSelectedAccounts(),
+        reference_images: refImages
       })
     })
       .then(function (r) { return r.json(); })
@@ -202,6 +214,8 @@
     generateBtn.textContent = 'Generar';
     retryBtn.style.display = 'none';
     progressSection.classList.remove('visible');
+    state.references = [];
+    renderReferencePreviews();
   }
 
   // ── SSE Connection ───────────────────────────────────
@@ -329,7 +343,128 @@
     outputFolder.value = state.lastOutputFolder;
     modelSelect.value = state.lastModel;
     retryBtn.style.display = 'none';
+    // Restaurar referencias para el retry
+    if (state.lastReferenceImages) {
+      state.references = state.lastReferenceImages.map(function (b64, i) {
+        return { name: 'ref_' + (i + 1) + '.png', data_b64: b64 };
+      });
+      renderReferencePreviews();
+    }
     startBatch();
+  }
+
+  // ── Reference Images ──────────────────────────────────
+  function onReferenceFilesChange(event) {
+    console.log('[Ref] onReferenceFilesChange called');
+    var files = event.target.files;
+    var fileCount = files ? files.length : 0;
+    console.log('[Ref] files count:', fileCount);
+    if (!files || fileCount === 0) return;
+    var maxSize = 5 * 1024 * 1024; // 5MB
+    for (var i = 0; i < fileCount; i++) {
+      console.log('[Ref] file:', files[i].name, files[i].size, 'bytes');
+      if (files[i].size > maxSize) {
+        showToast('La imagen excede 5MB: ' + files[i].name);
+        event.target.value = '';
+        return;
+      }
+    }
+    // Leer archivos y convertirlos a base64
+    var loadedCount = 0;
+    for (var j = 0; j < fileCount; j++) {
+      (function (file) {
+        var reader = new FileReader();
+        reader.onload = function (e) {
+          // Extraer base64 crudo (sin prefix data:image/...;base64,)
+          var result = e.target.result;
+          var rawBase64 = result.split(',')[1] || result;
+          state.references.push({ name: file.name, data_b64: rawBase64 });
+          console.log('[Ref] loaded:', file.name, 'base64 length:', rawBase64.length);
+          loadedCount++;
+          console.log('[Ref] loadedCount=' + loadedCount + ' fileCount=' + fileCount + ' match=' + (loadedCount === fileCount));
+          if (loadedCount === fileCount) {
+            console.log('[Ref] all files loaded, rendering previews');
+            showToast(fileCount + ' imagen(es) de referencia cargada(s)');
+            renderReferencePreviews();
+            validateForm();
+          }
+        };
+        reader.onerror = function (e) {
+          console.error('[Ref] FileReader error:', e);
+          showToast('Error al leer: ' + file.name);
+        };
+        reader.readAsDataURL(file);
+      })(files[j]);
+    }
+    // Reset input para permitir re-seleccionar el mismo archivo
+    event.target.value = '';
+  }
+
+  function removeReference(index) {
+    state.references.splice(index, 1);
+    renderReferencePreviews();
+    validateForm();
+  }
+
+  function renderReferencePreviews() {
+    var previewsEl = $('refPreviews');
+    var countEl = $('refCount');
+    var hintEl = $('refHint');
+    var sectionEl = $('refSection');
+    console.log('[Ref] renderReferencePreviews — refs:', state.references.length,
+      'previewsEl:', !!previewsEl, 'countEl:', !!countEl, 'hintEl:', !!hintEl);
+    if (!previewsEl || !countEl || !hintEl) return;
+
+    if (state.references.length === 0) {
+      previewsEl.style.display = 'none';
+      hintEl.style.display = '';
+      countEl.style.display = 'none';
+      previewsEl.innerHTML = '';
+      return;
+    }
+    previewsEl.style.display = 'flex';
+    hintEl.style.display = 'none';
+    countEl.style.display = '';
+    countEl.textContent = state.references.length;
+
+    var html = '';
+    for (var i = 0; i < state.references.length; i++) {
+      var ref = state.references[i];
+      var mime = ref.name.match(/\.(png|jpg|jpeg|webp)$/i);
+      var mimeType = mime ? 'image/' + mime[1].toLowerCase().replace('jpg', 'jpeg') : 'image/png';
+      html += '<div class="ref-thumb-wrap">' +
+        '<img src="data:' + mimeType + ';base64,' + ref.data_b64 + '" class="ref-thumb" title="' + esc(ref.name) + '">' +
+        '<span class="ref-thumb-remove" onclick="removeReference(' + i + ')">&times;</span>' +
+        '</div>';
+    }
+    previewsEl.innerHTML = html;
+  }
+
+  function loadProjectReferences(projectName) {
+    if (!projectName) return;
+    // Usar cache si existe
+    if (state.projectRefsCache.hasOwnProperty(projectName)) {
+      state.references = state.projectRefsCache[projectName];
+      renderReferencePreviews();
+      validateForm();
+      return;
+    }
+    // Fetch del endpoint
+    fetch('/api/projects/' + encodeURIComponent(projectName) + '/references')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var refs = (data.ok && data.images) ? data.images : [];
+        state.references = refs;
+        state.projectRefsCache[projectName] = refs;
+        renderReferencePreviews();
+        validateForm();
+      })
+      .catch(function () {
+        state.references = [];
+        state.projectRefsCache[projectName] = [];
+        renderReferencePreviews();
+        validateForm();
+      });
   }
 
   function countByStatus(status) {
@@ -526,6 +661,8 @@
           var promptsPath = (proj._dir || '') + '/' + promptsFile;
           loadPromptsFromPath(promptsPath);
         }
+        // Cargar referencias del proyecto
+        loadProjectReferences(name);
       })
       .catch(function () {});
   }
@@ -647,6 +784,8 @@
   window.createProject = createProject;
   window.migrateProjects = migrateProjects;
   window.toggleProjects = toggleProjects;
+  window.onReferenceFilesChange = onReferenceFilesChange;
+  window.removeReference = removeReference;
 
   // Kick off
   if (document.readyState === 'loading') {

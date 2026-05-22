@@ -20,7 +20,8 @@ from ._auth import _auto_tokens, _auto_tokens_lock, _auto_emails, _auto_names
 # Projects
 from ._projects import (
     _scan_project_folder, _list_projects, _save_project,
-    _create_project, _get_project, _update_project, _batch_project
+    _create_project, _get_project, _update_project, _batch_project,
+    _get_project_references
 )
 
 # Generation
