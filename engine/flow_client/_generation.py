@@ -29,6 +29,7 @@ class FlowClientInstance:
         self._recaptcha_lock = threading.Lock()
         self.account_hash = account_hash
         self.user_email = None
+        self._daily_quota_exhausted = False  # seteado cuando Flow devuelve PER_MODEL_DAILY_QUOTA_REACHED
 
         # Si no hay cookie pero hay account_hash, usar auto-auth de la extensión
         if not self.cookie_string and self.account_hash:
@@ -212,8 +213,14 @@ def batch_generate(prompts, output_folder, filename_prefix='flow_{n}', aspect_ra
     def _get_client(idx):
         if not all_clients:
             return None
+        # Filtrar clientes con cupo diario agotado
+        active_available = [c for c in (_active_clients if _active_clients else all_clients)
+                           if not getattr(c, '_daily_quota_exhausted', False)]
+        pool = active_available if active_available else all_clients
+        if not pool:
+            return None
         if not multi_account:
-            return all_clients[idx % len(all_clients)]
+            return pool[idx % len(pool)]
         try:
             connected_now = set(get_connected_accounts())
         except Exception:
@@ -231,7 +238,10 @@ def batch_generate(prompts, output_folder, filename_prefix='flow_{n}', aspect_ra
                 if on_status:
                     on_status(-1, f"✅ {', '.join(rejoined)} se conectó tarde, ya recibe trabajo")
             pool = _active_clients if _active_clients else all_clients
-            return pool[idx % len(pool)]
+            # Filtrar clientes con cupo diario agotado en el pool multi-cuenta
+            available = [c for c in pool if not getattr(c, '_daily_quota_exhausted', False)]
+            final_pool = available if available else pool
+            return final_pool[idx % len(final_pool)]
     _start_bridge_server()
     if on_status:
         on_status(-1, 'Esperando extensiones de Flow...')
@@ -366,6 +376,19 @@ def batch_generate(prompts, output_folder, filename_prefix='flow_{n}', aspect_ra
                 err_str = str(e)
                 is_429 = '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str or 'THROTTLED' in err_str
                 if is_429:
+                    # Detectar cupo diario agotado (no tiene sentido reintentar)
+                    is_daily_quota = 'DAILY_QUOTA' in err_str or 'PER_MODEL_DAILY_QUOTA_REACHED' in err_str
+                    if is_daily_quota:
+                        cli._daily_quota_exhausted = True
+                        _log(f'CUPO DIARIO AGOTADO: {cli.label} — saltando por el resto del batch')
+                        if on_status:
+                            try:
+                                on_status(i, f'Cupo diario agotado: {cli.label}')
+                            except Exception:
+                                pass
+                        # No reintentar — fallar inmediatamente
+                        return {'index': file_n, 'prompt': prompt, 'status': 'failed',
+                                'error': f'Cupo diario agotado ({cli.label})'}
                     wait_time = min(15 * (attempt + 1), 60)
                     _log(f'Rate limited (429) task {i + 1} (attempt {attempt + 1}), waiting {wait_time}s...')
                     with _throttle_lock:
