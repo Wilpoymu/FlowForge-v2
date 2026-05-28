@@ -113,8 +113,6 @@ def clear_pending_state():
     if dropped_q or dropped_r:
         _log(f'Cleared stale state: {dropped_q} queued requests, {dropped_r} pending results')
 
-        return _auto_emails.get(account_hash, '')
-
 # SSE infrastructure (Server-Sent Events para el dashboard)
 _sse_clients = {}       # batch_id -> list of queue.Queue
 _sse_lock = threading.Lock()
